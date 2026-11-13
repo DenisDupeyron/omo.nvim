@@ -1,0 +1,129 @@
+# Copyright (C) 2026 Denis Dupeyron
+#
+# This program is free software. You can redistribute it and modify it
+# under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY. Without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: JohnnyMorganz/stylua-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version: latest
+          args: --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+      - name: Install lua-language-server
+        run: |
+          curl -L -o lls.tar.gz https://github.com/LuaLS/lua-language-server/releases/download/3.19.1/lua-language-server-3.19.1-linux-x64.tar.gz
+          mkdir -p "$HOME/lua-language-server"
+          tar -xzf lls.tar.gz -C "$HOME/lua-language-server"
+      - name: Type check
+        run: "$HOME/lua-language-server/bin/lua-language-server --check . --configpath .luarc.ci.json"
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+      - name: Run unit tests
+        run: nvim --headless -u NONE -l tests/run.lua
+
+  bun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+      - uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+      - name: Install openssl
+        run: sudo apt-get update && sudo apt-get install -y openssl
+      - name: Test extension with real Lua server
+        run: bun test --timeout 10000 ./extension/index.test.ts
+      - name: Strict check against published host declarations
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT="$PWD"
+          TYPE=$(mktemp -d "$RUNNER_TEMP/omo-nvim-types.XXXXXX")
+          trap 'rm -rf "$TYPE"' EXIT
+          export BUN_INSTALL_CACHE_DIR="$TYPE/cache"
+          mkdir "$TYPE/extension"
+          cp extension/index.ts extension/index.test.ts "$TYPE/extension/"
+          sha256sum extension/index.ts extension/index.test.ts
+          sha256sum "$TYPE/extension/index.ts" "$TYPE/extension/index.test.ts"
+          cmp extension/index.ts "$TYPE/extension/index.ts"
+          cmp extension/index.test.ts "$TYPE/extension/index.test.ts"
+          cat > "$TYPE/package.json" <<'JSON'
+          {
+            "private": true,
+            "dependencies": {
+              "@earendil-works/pi-coding-agent": "npm:@code-yeongyu/senpi@latest",
+              "bun-types": "1.4.4",
+              "@types/node": "26.6.2",
+              "undici-types": "8.9.0"
+            },
+            "overrides": {
+              "bun-types": "1.4.4",
+              "@types/node": "26.6.2",
+              "undici-types": "8.9.0"
+            }
+          }
+          JSON
+          cat > "$TYPE/tsconfig.json" <<'JSON'
+          {
+            "compilerOptions": {
+              "target": "ESNext",
+              "module": "ESNext",
+              "moduleResolution": "Bundler",
+              "types": [
+                "bun-types"
+              ],
+              "strict": true,
+              "noUncheckedIndexedAccess": true,
+              "exactOptionalPropertyTypes": true,
+              "verbatimModuleSyntax": true,
+              "noEmit": true,
+              "skipLibCheck": false
+            },
+            "include": [
+              "extension/index.ts",
+              "extension/index.test.ts"
+            ]
+          }
+          JSON
+          cd "$TYPE"
+          CI=1 bun install --ignore-scripts
+          bun -e 'for (const name of ["@earendil-works/pi-coding-agent", "bun-types", "@types/node", "undici-types"]) { const p = require("./node_modules/" + name + "/package.json"); console.log(JSON.stringify({name, packageName:p.name, version:p.version, types:p.types, exports:p.exports})); }'
+          cat bun.lock
+          cd "$ROOT"
+          bun check --no-script --no-pretty -p "$TYPE/tsconfig.json"
