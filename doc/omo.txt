@@ -1,0 +1,158 @@
+*omo.nvim*            Neovim plugin for the OmO TUI                    *omo*
+
+==============================================================================
+CONTENTS                                                   *omo.nvim-contents*
+
+1. Introduction ................. |omo.nvim-introduction|
+2. Requirements ................. |omo.nvim-requirements|
+3. Installation ................. |omo.nvim-installation|
+4. Configuration ................ |omo-config|
+5. Usage ........................ |omo-commands|
+6. API .......................... |omo-api|
+7. Editor integration ........... |omo.nvim-editor|
+8. Health ....................... |omo.nvim-health|
+
+==============================================================================
+INTRODUCTION                                           *omo.nvim-introduction*
+
+`omo.nvim` integrates the OmO TUI
+(https://github.com/code-yeongyu/oh-my-openagent) into Neovim. It provides a
+toggleable terminal split running `omo` in the working directory captured at
+launch, and inserts the current line or a visual selection into the OmO
+composer as file mention text.
+
+==============================================================================
+REQUIREMENTS                                           *omo.nvim-requirements*
+
+- Neovim 0.11+
+- `omo` on `PATH`
+- `openssl` on `PATH` (optional): required for the WebSocket handshake on the
+  editor integration channel. Without it, mentions fall back to typed composer
+  text. `:checkhealth omo` reports this.
+
+==============================================================================
+INSTALLATION                                           *omo.nvim-installation*
+
+No package install or build step is needed.
+
+lazy.nvim:
+>lua
+  {
+    "DenisDupeyron/omo.nvim",
+    config = function()
+      ---@type omo.Opts
+      vim.g.omo_opts = {
+        -- Your configuration, if any
+      }
+    end,
+  }
+<
+vim.pack:
+>lua
+  vim.pack.add({ src = "https://github.com/DenisDupeyron/omo.nvim" })
+<
+Type checking with lazydev.nvim:
+`---@type omo.Opts` annotations only resolve when your Lua language server
+knows where to find `omo.nvim`'s type definitions. If you use lazydev.nvim
+(https://github.com/folke/lazydev.nvim), add a library entry for it:
+>lua
+  {
+    "folke/lazydev.nvim",
+    opts = {
+      library = {
+        { path = "omo.nvim", words = { "omo" } },
+      },
+    },
+  },
+<
+Without that entry, `vim.g.omo_opts` still works at runtime, though `lua_ls`
+reports "Undefined type or alias `omo.Opts`" as a diagnostic.
+
+==============================================================================
+CONFIGURATION                                                     *omo-config*
+
+Options are read from `vim.g.omo_opts` at call time. Keymaps are registered
+once on `VimEnter`, so the table can be set in either lazy.nvim's `init =` or
+`config =` function.
+
+>lua
+  ---@type omo.Opts
+  vim.g.omo_opts = {
+    -- Split height when the split is at the bottom: a ratio of the window
+    -- (0 < h <= 1) or a row count (h > 1).
+    height = 0.30,
+    -- Split width when the split is on the side: a ratio of the window
+    -- (0 < w <= 1) or a column count (w > 1).
+    width = 0.40,
+    -- Side for a new split: "bottom" or "right".
+    side = "right",
+    -- Keymaps to register. Set to false to register none. Set an individual
+    -- key to false to disable only that one.
+    keys = {
+      toggle = "<leader>o.", -- toggle the OmO terminal
+      range = "<leader>or", -- send the visual selection
+      line = "<leader>ol",   -- send the current line
+      side = "<leader>os",   -- move the split between bottom and right
+    },
+  }
+<
+
+==============================================================================
+USAGE                                                           *omo-commands*
+
+                                                                  *:OmoToggle*
+                                                              *:OmoToggleSide*
+                                                                    *:OmoSend*
+Command                Action
+------------------------------------------------------------------------------
+`:OmoToggle`           Toggle the OmO terminal split.
+`:OmoToggleSide`       Move the split between the bottom and the right.
+`:[range]OmoSend`      Send the current line, or the given range, to OmO.
+                       Without a range, the cursor line is sent (for example,
+                       `:5,9OmoSend` sends lines 5 through 9).
+
+Default mappings register `<leader>o.` in normal and terminal mode,
+`<leader>or` in visual mode, `<leader>ol` in normal mode, and `<leader>os` in
+normal and terminal mode. Because `<leader>o.` and `<leader>os` are bound in
+terminal mode, both work from inside the OmO split too. The split remembers
+its last side until `omo` exits, so hiding and reopening it restores that side
+until the session ends.
+
+==============================================================================
+API                                                                  *omo-api*
+
+`require("omo")` returns four functions:
+
+- `toggle()`: toggle the OmO terminal split.
+- `toggle_side()`: move the split between the bottom and the right.
+- `send_line()`: send the current line to OmO.
+- `send_selection()`: send the current visual selection to OmO.
+
+==============================================================================
+EDITOR INTEGRATION                                           *omo.nvim-editor*
+
+When the OmO terminal starts, `omo.nvim` launches `omo -e` with its bundled
+extension and listens on a local loopback WebSocket. It passes the port in
+`OMO_EDITOR_SSE_PORT` and blanks `TMUX` and `STY` so OmO does not wrap Kitty
+image output in tmux passthrough sequences that a Neovim terminal cannot
+handle.
+
+If the bundled extension connects in TUI mode and completes the handshake,
+mentions are sent over the WebSocket channel and inserted as text into the OmO
+composer. Up to 20 mentions are queued while the connection finishes starting,
+and dropped with a warning if the connection closes before OmO is ready. When
+no ready or connecting client can accept a mention, `omo.nvim` falls back to
+typing the mention string directly into the terminal channel.
+
+Both channels format a single line as `@bar.lua#5` and a line range as
+`@bar.lua#5-9`, with no trailing space. Paths inside the launch working
+directory are formatted relative to that directory, and paths outside it stay
+absolute. Missing or invalid extension paths are reported by OmO itself.
+
+==============================================================================
+HEALTH                                                       *omo.nvim-health*
+
+Run `:checkhealth omo` to verify the Neovim version, the `omo` binary,
+`openssl`, `+winfixbuf` support, and the editor integration state.
+
+ vim:tw=78:ts=8:noet:ft=help:norl:
