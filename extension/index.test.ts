@@ -95,9 +95,13 @@ async function setup(directory: string) {
     };
     let publish: (() => void | Promise<void>) | undefined;
     let draft = "draft:";
+    let rendered = draft;
     const pastes: string[] = [];
     const handlers = new Map<string, (...args: unknown[]) => unknown>();
-    const ui = { pasteToEditor(text: string) { pastes.push(text); draft += text; events.emit("paste", text); events.emit(`paste-${pastes.length}`); } } satisfies Pick<ExtensionUIContext, "pasteToEditor">;
+    const ui = {
+      pasteToEditor(text: string) { pastes.push(text); draft += text; events.emit("paste", text); events.emit(`paste-${pastes.length}`); },
+      setStatus(_key: string, _text: string | undefined) { rendered = draft; },
+    } satisfies Pick<ExtensionUIContext, "pasteToEditor" | "setStatus">;
     const context: Pick<ExtensionContext, "mode" | "cwd" | "afterSessionStart"> & { ui: typeof ui } = { mode: "tui", cwd: "/changed-host-cwd", ui, afterSessionStart(callback) { publish = callback; } };
     const api: Pick<ExtensionAPI, "on"> = {
       on(event: string, handler: unknown) {
@@ -138,7 +142,7 @@ async function setup(directory: string) {
     acquired = true;
     return {
       root, alias, events, sockets, sent, received, closes, pastes, context, emit, load, start, deliver, shutdown,
-      publish: () => publish?.(), draft: () => draft,
+      publish: () => publish?.(), draft: () => draft, rendered: () => rendered,
       async dispose() {
         shutdown();
         for (const socket of sockets) socket.close();
@@ -252,6 +256,7 @@ async function scenario(name: string): Promise<void> {
         }
         expect(f.pastes).toEqual(rows.map((row) => row[3]));
         expect(f.draft()).toBe("draft:" + rows.map((row) => row[3]).join(""));
+        expect(f.rendered()).toBe("draft:" + rows.map((row) => row[3]).join(""));
         break;
       }
       case "invalid-mentions": {

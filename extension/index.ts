@@ -99,6 +99,8 @@ export default function (pi: Pick<ExtensionAPI, "on">): void {
       const target = normalize(p.filePath);
       const path = target.startsWith(prefix) ? target.slice(prefix.length) : p.filePath;
       ctx.ui.pasteToEditor(`@${path}#${p.lineStart}${p.lineEnd === p.lineStart ? "" : `-${p.lineEnd}`}`);
+      // OmO 5.1.68 pastes without repainting. Clearing our status requests a render.
+      ctx.ui.setStatus("omo-nvim-redraw", undefined);
     };
 
     close = fail;

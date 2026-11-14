@@ -54,6 +54,8 @@ jobs:
           neovim: true
       - name: Run unit tests
         run: nvim --headless -u NONE -l tests/run.lua
+      - name: Test terminal input after sending mentions
+        run: nvim --headless -u NONE -i NONE -c 'luafile tests/terminal_mode_spec.lua'
 
   bun:
     runs-on: ubuntu-latest

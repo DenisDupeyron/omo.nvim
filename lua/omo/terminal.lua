@@ -314,6 +314,7 @@ function M.send_context(first_line, last_line)
     vim.api.nvim_chan_send(state.job, M.context_for_range(path, first_line, last_line))
   end
   focus_terminal()
+  vim.cmd("startinsert")
 end
 
 ---Send the current line to Omo.
