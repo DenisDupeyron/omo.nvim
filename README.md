@@ -8,6 +8,8 @@ context into the composer.
 `omo.nvim` handles only the communication between Neovim and OmO. It leaves
 OmO workflows in the TUI and keeps editing inside Neovim.
 
+![omo.nvim running OmO in a Neovim terminal split](doc/omo.nvim.png)
+
 ## Features
 
 - Toggle a terminal split running `omo` in the working directory captured at
